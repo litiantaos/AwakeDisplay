@@ -55,8 +55,12 @@ project.xcworkspace
 # macOS
 .DS_Store
 
+# Trae
+.trae/
+
 # Build products
 *.app
+*.zip
 AwakeDisplay.app/
 VirtualDisplay.app/
 AppIcon.iconset/
