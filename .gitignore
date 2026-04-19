@@ -1,0 +1,63 @@
+# Xcode
+#
+# build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace
+
+# Swift Package Manager
+#
+# Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
+# Packages/
+# Package.pins
+# Package.resolved
+# *.xcodeproj
+#
+# Xcode automatically generates this directory with a .gitignore file configuring
+# the directory to be ignored.
+#
+# .swiftpm/xcode/
+
+# CocoaPods
+#
+# We recommend against adding the Pods directory to your .gitignore. However
+# you should judge for yourself, the pros and cons are mentioned at:
+# https://guides.cocoapods.org/using/using-cocoapods.html#should-i-check-the-pods-directory-into-source-control
+#
+# Pods/
+#
+# Add this line if you want to avoid checking in build files from Carthage
+# Carthage/Build
+
+# fastlane
+#
+# It is recommended to not store the pods directory in the repository. Because
+# they are too large and you can always run fastlane to fetch them.
+#
+# fastlane/report.xml
+# fastlane/Preview.html
+# fastlane/screenshots/**/*.png
+# fastlane/test_output
+
+# macOS
+.DS_Store
+
+# Build products
+*.app
+AwakeDisplay.app/
+VirtualDisplay.app/
+AppIcon.iconset/
+build/
