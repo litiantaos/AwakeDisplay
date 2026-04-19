@@ -1,6 +1,13 @@
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 
+// Expose internal CGDisplay API for display configuration
+// These are available in CoreGraphics but we need to declare them if not fully exposed in Swift
+CGError CGBeginDisplayConfiguration(CGDisplayConfigRef _Nullable * _Nullable config);
+CGError CGConfigureDisplayMirrorOfDisplay(CGDisplayConfigRef _Nullable config, CGDirectDisplayID display, CGDirectDisplayID master);
+CGError CGConfigureDisplayOrigin(CGDisplayConfigRef _Nullable config, CGDirectDisplayID display, int32_t x, int32_t y);
+CGError CGCompleteDisplayConfiguration(CGDisplayConfigRef _Nullable config, CGConfigureOption option);
+
 @interface CGVirtualDisplayDescriptor : NSObject
 @property (nonatomic, retain) dispatch_queue_t queue;
 @property (nonatomic, retain) NSString *name;

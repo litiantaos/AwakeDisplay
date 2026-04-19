@@ -1,7 +1,7 @@
 import Cocoa
 import ServiceManagement
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
     var pipController: PiPWindowController?
     
@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var toggleItem: NSMenuItem!
     var pipItem: NSMenuItem!
     var autoStartItem: NSMenuItem!
+    var mirrorModeItem: NSMenuItem!
     
     // SVG Icons
     private var lineIcon: NSImage?
@@ -54,47 +55,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         menu.addItem(NSMenuItem.separator())
         
-        // 2. Resolution Options
-        let resMenu = NSMenu()
-        let item1080 = NSMenuItem(title: "1920 x 1080 (1080p)", action: #selector(set1080p), keyEquivalent: "")
-        item1080.state = .on // Default
-        let item2k = NSMenuItem(title: "2560 x 1440 (2K)", action: #selector(set2k), keyEquivalent: "")
-        let item4k = NSMenuItem(title: "3840 x 2160 (4K)", action: #selector(set4k), keyEquivalent: "")
-        
-        resMenu.addItem(item1080)
-        resMenu.addItem(item2k)
-        resMenu.addItem(item4k)
-        
-        let resItem = NSMenuItem(title: "显示器分辨率", action: nil, keyEquivalent: "")
-        resItem.submenu = resMenu
-        menu.addItem(resItem)
+        // 2. Display Mode (Mirror / Extended)
+        mirrorModeItem = NSMenuItem(title: "切换为扩展", action: #selector(toggleMirrorMode), keyEquivalent: "")
+        mirrorModeItem.isHidden = true
+        menu.addItem(mirrorModeItem)
         
         menu.addItem(NSMenuItem.separator())
         
-        // 3. Picture in Picture (PiP)
+        // 3. PiP View (Only visible in Extended Mode)
         pipItem = NSMenuItem(title: "开启画中画", action: #selector(togglePiP), keyEquivalent: "")
         pipItem.isHidden = true // hidden initially because display is off
         menu.addItem(pipItem)
         
         menu.addItem(NSMenuItem.separator())
         
-        // 4. Auto Start
+        // 3. Auto Start
         autoStartItem = NSMenuItem(title: "登录时打开", action: #selector(toggleAutoStart), keyEquivalent: "")
         if #available(macOS 13.0, *) {
             autoStartItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        } else {
-            // Fallback for older macOS versions is omitted for brevity since we target macOS 14+
-            autoStartItem.state = .off
         }
         menu.addItem(autoStartItem)
         
         menu.addItem(NSMenuItem.separator())
         
-        // 5. Quit
+        // 4. Quit
         let quitItem = NSMenuItem(title: "退出", action: #selector(quitApp), keyEquivalent: "")
         menu.addItem(quitItem)
         
         statusItem.menu = menu
+        menu.delegate = self
+        
+        updateMenuState()
     }
     
     @objc func quitApp() {
@@ -102,59 +93,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func toggleDisplay() {
-        AwakeDisplayManager.shared.toggleDisplay()
-        
-        let isActive = AwakeDisplayManager.shared.isDisplayActive
-        toggleItem.title = isActive ? "关闭虚拟显示器" : "开启虚拟显示器"
-        
-        if isActive, let img = fillIcon {
-            statusItem.button?.image = img
-            statusItem.button?.title = ""
-        } else if !isActive, let img = lineIcon {
-            statusItem.button?.image = img
-            statusItem.button?.title = ""
-        } else if let image = NSImage(systemSymbolName: isActive ? "display.2" : "display", accessibilityDescription: "AwakeDisplay") {
-            image.isTemplate = true
-            statusItem.button?.image = image
-            statusItem.button?.title = ""
+        if AwakeDisplayManager.shared.isDisplayActive {
+            AwakeDisplayManager.shared.destroyDisplay()
         } else {
-            statusItem.button?.title = isActive ? "AD(On)" : "AD"
+            AwakeDisplayManager.shared.createDisplay()
         }
         
-        pipItem.isHidden = !isActive
-        pipItem.isEnabled = isActive
-        
-        if !isActive {
-            // Turn off PiP if display is closed
-            pipController?.stopPiP()
-            pipItem.title = "开启画中画"
+        // Give it extra time for the mirror mode toggle to settle on init
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.updateMenuState()
         }
     }
     
-    @objc func set1080p(_ sender: NSMenuItem) {
-        updateResolution(width: 1920, height: 1080, sender: sender)
-    }
-    
-    @objc func set2k(_ sender: NSMenuItem) {
-        updateResolution(width: 2560, height: 1440, sender: sender)
-    }
-    
-    @objc func set4k(_ sender: NSMenuItem) {
-        updateResolution(width: 3840, height: 2160, sender: sender)
-    }
-    
-    private func updateResolution(width: UInt32, height: UInt32, sender: NSMenuItem) {
-        AwakeDisplayManager.shared.applyResolution(width: width, height: height)
-        
-        // Update menu states
-        if let menu = sender.menu {
-            for item in menu.items {
-                item.state = .off
-            }
-        }
-        sender.state = .on
-    }
-    
+
     @objc func togglePiP() {
         if pipController == nil {
             pipController = PiPWindowController()
@@ -197,5 +148,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Clean up
         pipController?.stopPiP()
         AwakeDisplayManager.shared.destroyDisplay()
+    }
+    
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        updateMenuState()
+    }
+    
+    private func updateMenuState() {
+        let isActive = AwakeDisplayManager.shared.isDisplayActive
+        
+        toggleItem.title = isActive ? "关闭虚拟显示器" : "开启虚拟显示器"
+        
+        if isActive, let img = fillIcon {
+            statusItem.button?.image = img
+            statusItem.button?.title = ""
+        } else if !isActive, let img = lineIcon {
+            statusItem.button?.image = img
+            statusItem.button?.title = ""
+        } else if let image = NSImage(systemSymbolName: isActive ? "display.2" : "display", accessibilityDescription: "AwakeDisplay") {
+            image.isTemplate = true
+            statusItem.button?.image = image
+            statusItem.button?.title = ""
+        } else {
+            statusItem.button?.title = isActive ? "AD(On)" : "AD"
+        }
+        
+        let isMirroring = AwakeDisplayManager.shared.isMirroring
+        
+        // Update mirror mode toggle
+        mirrorModeItem.isHidden = !isActive
+        mirrorModeItem.isEnabled = isActive
+        if isActive {
+            mirrorModeItem.title = isMirroring ? "切换为扩展显示器" : "切换为镜像显示器"
+        }
+        
+        // Hide PiP option if display is off or in mirroring mode
+        pipItem.isHidden = !isActive || isMirroring
+        pipItem.isEnabled = !pipItem.isHidden
+        
+        if !pipItem.isHidden {
+            let isPiPActive = pipController != nil
+            pipItem.title = isPiPActive ? "关闭画中画" : "开启画中画"
+        } else {
+            // Auto close PiP if we switched to mirror mode or turned off display
+            pipController?.stopPiP()
+            pipController = nil
+            pipItem.title = "开启画中画"
+        }
+    }
+    
+    @objc func toggleMirrorMode() {
+        let isMirroring = AwakeDisplayManager.shared.isMirroring
+        AwakeDisplayManager.shared.setMirroring(!isMirroring)
+        
+        // Give the OS a moment to apply the display configuration before updating the menu
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.updateMenuState()
+        }
     }
 }

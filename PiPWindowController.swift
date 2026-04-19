@@ -15,7 +15,20 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
     var onWindowClosed: (() -> Void)?
     
     init() {
-        let contentRect = NSRect(x: 100, y: 100, width: 480, height: 270)
+        let contentWidth: CGFloat = 480
+        let contentHeight: CGFloat = 270
+        
+        // 尝试获取主屏幕的右上角位置
+        var xPos: CGFloat = 100
+        var yPos: CGFloat = 100
+        
+        if let mainScreen = NSScreen.main {
+            // 右上角，减去一些 padding (例如 20)，再减去窗口自身宽高
+            xPos = mainScreen.visibleFrame.maxX - contentWidth - 20
+            yPos = mainScreen.visibleFrame.maxY - contentHeight - 20
+        }
+        
+        let contentRect = NSRect(x: xPos, y: yPos, width: contentWidth, height: contentHeight)
         let styleMask: NSWindow.StyleMask = [.titled, .closable, .resizable, .miniaturizable]
         
         let window = NSWindow(contentRect: contentRect,
@@ -74,8 +87,20 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         
         stopPiP()
         
+        // 如果系统当前正在将此虚拟显示器设为镜像模式，则拒绝开启画中画
+        // 避免 macOS 底层因为捕获被镜像的虚拟显示器而导致黑屏甚至死机
+        let mirroredDisplay = CGDisplayMirrorsDisplay(displayID)
+        let isMirroring = (mirroredDisplay != kCGNullDirectDisplay)
+        
+        if isMirroring {
+            print("Cannot start PiP in mirror mode to prevent system hang.")
+            return
+        }
+        
         let session = AVCaptureSession()
-        session.sessionPreset = .high // Try to keep high quality
+        
+        // 扩展模式，保持高质量
+        session.sessionPreset = .high
         
         guard let input = AVCaptureScreenInput(displayID: displayID) else {
             showPermissionAlert()
@@ -84,7 +109,7 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         
         input.capturesCursor = true
         input.capturesMouseClicks = true
-        input.minFrameDuration = CMTimeMake(value: 1, timescale: 60) // 提升帧率到 60fps
+        input.minFrameDuration = CMTimeMake(value: 1, timescale: 60)
         
         if session.canAddInput(input) {
             session.addInput(input)
