@@ -8,8 +8,8 @@ MACOS_DIR="${APP_BUNDLE}/Contents/MacOS"
 RESOURCES_DIR="${APP_BUNDLE}/Contents/Resources"
 PLIST_PATH="${APP_BUNDLE}/Contents/Info.plist"
 
-# 获取版本号，如果没有则默认为 1.1.1
-APP_VERSION=${APP_VERSION:-"1.1.1"}
+# 获取版本号，如果没有则默认为 1.1.2
+APP_VERSION=${APP_VERSION:-"1.1.2"}
 BUILD_NUMBER=${BUILD_NUMBER:-"1"}
 
 echo "正在构建 ${APP_NAME} (版本: ${APP_VERSION}, 构建号: ${BUILD_NUMBER})..."
@@ -89,6 +89,7 @@ swiftc -import-objc-header Sources/Core/Bridging-Header.h \
        Sources/App/main.swift \
        Sources/App/AppDelegate.swift \
        Sources/Core/AwakeDisplayManager.swift \
+       Sources/Core/LanguageManager.swift \
        Sources/Core/UpdateCoordinator.swift \
        Sources/UI/PiPWindowController.swift \
        Sources/UI/AboutWindowController.swift \

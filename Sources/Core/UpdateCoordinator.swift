@@ -104,7 +104,7 @@ class UpdateCoordinator: NSObject, URLSessionDownloadDelegate {
             
         } catch {
             let alert = NSAlert()
-            alert.messageText = "更新失败"
+            alert.messageText = "Update Failed".localized
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .critical
             alert.runModal()

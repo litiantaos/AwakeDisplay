@@ -2,6 +2,7 @@ import Cocoa
 
 final class AboutWindowController: NSObject {
     private var windowController: NSWindowController?
+    private var versionLabel: NSTextField?
 
     func show() {
         if windowController == nil {
@@ -37,7 +38,7 @@ final class AboutWindowController: NSObject {
             contentView.addSubview(nameLabel)
 
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
-            let versionLabel = NSTextField(labelWithString: "版本 \(version)")
+            let versionLabel = NSTextField(labelWithString: String(format: "Version %@".localized, version))
             versionLabel.font = NSFont.systemFont(ofSize: 11)
             versionLabel.textColor = NSColor.secondaryLabelColor
             versionLabel.alignment = .center
@@ -46,6 +47,7 @@ final class AboutWindowController: NSObject {
             versionLabel.drawsBackground = false
             versionLabel.frame = NSRect(x: 0, y: contentHeight - 156, width: contentWidth, height: 16)
             contentView.addSubview(versionLabel)
+            self.versionLabel = versionLabel
 
             let linkButton = NSButton(frame: NSRect(x: 0, y: 20, width: contentWidth, height: 16))
             linkButton.title = "GitHub: litiantaos/AwakeDisplay"
@@ -72,10 +74,17 @@ final class AboutWindowController: NSObject {
 
             window.contentView = contentView
             windowController = NSWindowController(window: window)
+            
+            NotificationCenter.default.addObserver(self, selector: #selector(updateLanguage), name: NSNotification.Name("LanguageChanged"), object: nil)
         }
 
         windowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func updateLanguage() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        versionLabel?.stringValue = String(format: "Version %@".localized, version)
     }
 
     @objc private func openGitHub() {

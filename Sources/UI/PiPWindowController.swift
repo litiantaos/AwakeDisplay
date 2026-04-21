@@ -113,7 +113,7 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         session.sessionPreset = .high
         
         guard let input = AVCaptureScreenInput(displayID: displayID) else {
-            showPermissionAlert(reason: "无法创建屏幕捕获输入。如果这是首次使用，请确保已授予屏幕录制权限。")
+            showPermissionAlert(reason: "Unable to create screen capture input. Please ensure screen recording permissions are granted in System Settings.".localized)
             return false
         }
         
@@ -124,7 +124,7 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         if session.canAddInput(input) {
             session.addInput(input)
         } else {
-            showPermissionAlert(reason: "无法将屏幕捕获添加到会话中。这可能是由于系统限制或权限不足。")
+            showPermissionAlert(reason: "Unable to add screen capture to the session.".localized)
             return false
         }
         
@@ -243,10 +243,10 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
     private func showPermissionAlert(reason: String) {
         DispatchQueue.main.async {
             let alert = NSAlert()
-            alert.messageText = "屏幕录制权限提示"
-            alert.informativeText = reason + "\n请在「系统设置 -> 隐私与安全性 -> 屏幕录制」中为本应用（或 Terminal）授予权限后重试。"
+            alert.messageText = "Screen Recording Permission".localized
+            alert.informativeText = reason
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "好的")
+            alert.addButton(withTitle: "OK".localized)
             alert.runModal()
         }
     }

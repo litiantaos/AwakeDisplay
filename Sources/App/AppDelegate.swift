@@ -13,8 +13,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var mirrorModeItem: NSMenuItem!
     var aboutItem: NSMenuItem!
     var updateItem: NSMenuItem!
+    var languageItem: NSMenuItem!
+    var quitItem: NSMenuItem!
+    
+    var zhItem: NSMenuItem!
+    var enItem: NSMenuItem!
     
     private let aboutController = AboutWindowController()
+    
+    private var currentUpdateProgress: Int?
+    private var readyToInstallVersion: String?
     
     // SVG 图标
     private var lineIcon: NSImage?
@@ -56,33 +64,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupMenu()
         setupUpdateObserver()
         UpdateCoordinator.shared.checkForUpdates()
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(languageChanged), name: NSNotification.Name("LanguageChanged"), object: nil)
     }
     
     func setupMenu() {
         let menu = NSMenu()
         
         // 1. 开启/关闭虚拟显示器
-        toggleItem = NSMenuItem(title: "开启虚拟显示器", action: #selector(toggleDisplay), keyEquivalent: "")
+        toggleItem = NSMenuItem(title: "Turn On Virtual Display".localized, action: #selector(toggleDisplay), keyEquivalent: "")
         menu.addItem(toggleItem)
         
         menu.addItem(NSMenuItem.separator())
         
         // 2. 显示模式 (镜像 / 扩展)
-        mirrorModeItem = NSMenuItem(title: "切换为扩展显示器", action: #selector(toggleMirrorMode), keyEquivalent: "")
+        mirrorModeItem = NSMenuItem(title: "Switch to Extended Display".localized, action: #selector(toggleMirrorMode), keyEquivalent: "")
         mirrorModeItem.isHidden = true
         menu.addItem(mirrorModeItem)
         
         menu.addItem(NSMenuItem.separator())
         
         // 3. 画中画视图 (仅在扩展模式下可见)
-        pipItem = NSMenuItem(title: "开启画中画", action: #selector(togglePiP), keyEquivalent: "")
+        pipItem = NSMenuItem(title: "Turn On PiP".localized, action: #selector(togglePiP), keyEquivalent: "")
         pipItem.isHidden = true // 初始隐藏，因为显示器未开启
         menu.addItem(pipItem)
         
         menu.addItem(NSMenuItem.separator())
         
         // 4. 开机自启动
-        autoStartItem = NSMenuItem(title: "登录时打开", action: #selector(toggleAutoStart), keyEquivalent: "")
+        autoStartItem = NSMenuItem(title: "Open at Login".localized, action: #selector(toggleAutoStart), keyEquivalent: "")
         if #available(macOS 13.0, *) {
             autoStartItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
         }
@@ -90,23 +100,69 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         menu.addItem(NSMenuItem.separator())
         
-        // 5. 更新（默认隐藏，只在检测到并下载时显示）
-        updateItem = NSMenuItem(title: "正在检查更新...", action: nil, keyEquivalent: "")
+        // 5. 语言
+        languageItem = NSMenuItem(title: "Language".localized, action: nil, keyEquivalent: "")
+        let langMenu = NSMenu()
+        zhItem = NSMenuItem(title: "中文", action: #selector(switchLanguage(_:)), keyEquivalent: "")
+        zhItem.representedObject = "zh-Hans"
+        enItem = NSMenuItem(title: "English", action: #selector(switchLanguage(_:)), keyEquivalent: "")
+        enItem.representedObject = "en"
+        langMenu.addItem(zhItem)
+        langMenu.addItem(enItem)
+        languageItem.submenu = langMenu
+        menu.addItem(languageItem)
+        updateLanguageMenuState()
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // 6. 更新（默认隐藏，只在检测到并下载时显示）
+        updateItem = NSMenuItem(title: "Checking for Updates...".localized, action: nil, keyEquivalent: "")
         updateItem.isHidden = true
         menu.addItem(updateItem)
         
-        // 6. 关于
-        aboutItem = NSMenuItem(title: "关于", action: #selector(showAbout), keyEquivalent: "")
+        // 7. 关于
+        aboutItem = NSMenuItem(title: "About".localized, action: #selector(showAbout), keyEquivalent: "")
         menu.addItem(aboutItem)
         
         menu.addItem(NSMenuItem.separator())
         
-        // 7. 退出
-        let quitItem = NSMenuItem(title: "退出", action: #selector(quitApp), keyEquivalent: "")
+        // 8. 退出
+        quitItem = NSMenuItem(title: "Quit".localized, action: #selector(quitApp), keyEquivalent: "")
         menu.addItem(quitItem)
         
         statusItem.menu = menu
         menu.delegate = self
+        
+        updateMenuState()
+    }
+    
+    @objc func switchLanguage(_ sender: NSMenuItem) {
+        if let langString = sender.representedObject as? String, let lang = Language(rawValue: langString) {
+            LanguageManager.shared.currentLanguage = lang
+        }
+    }
+    
+    private func updateLanguageMenuState() {
+        zhItem.state = LanguageManager.shared.currentLanguage == .zh ? .on : .off
+        enItem.state = LanguageManager.shared.currentLanguage == .en ? .on : .off
+    }
+
+    @objc func languageChanged() {
+        updateLanguageMenuState()
+        autoStartItem.title = "Open at Login".localized
+        aboutItem.title = "About".localized
+        languageItem.title = "Language".localized
+        quitItem.title = "Quit".localized
+        
+        if let progress = currentUpdateProgress {
+            updateItem.title = String(format: "Downloading Update %d%%".localized, progress)
+        } else if let version = readyToInstallVersion {
+            updateItem.title = String(format: "Restart to Update %@".localized, version)
+        } else if updateItem.action == nil {
+            updateItem.title = "Checking for Updates...".localized
+        } else {
+            updateItem.title = "Update Download Failed".localized
+        }
         
         updateMenuState()
     }
@@ -128,21 +184,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 break
                 
             case .downloading(let progress):
+                self.currentUpdateProgress = progress
                 self.updateItem.isHidden = false
-                self.updateItem.title = "下载更新中 \(progress)%"
+                self.updateItem.title = String(format: "Downloading Update %d%%".localized, progress)
                 self.updateItem.isEnabled = false
                 
             case .readyToInstall(let version):
+                self.currentUpdateProgress = nil
+                self.readyToInstallVersion = version
                 self.updateItem.isHidden = false
-                self.updateItem.title = "重启更新 \(version)"
+                self.updateItem.title = String(format: "Restart to Update %@".localized, version)
                 self.updateItem.isEnabled = true
                 self.updateItem.action = #selector(self.performInstall)
                 self.updateItem.target = self
                 
             case .error(let msg):
+                self.currentUpdateProgress = nil
+                self.readyToInstallVersion = nil
                 os_log("自动更新发生错误: %{public}@", type: .error, msg)
                 self.updateItem.isHidden = false
-                self.updateItem.title = "更新下载失败"
+                self.updateItem.title = "Update Download Failed".localized
                 self.updateItem.isEnabled = false
             }
         }
@@ -170,7 +231,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if pipController == nil {
             pipController = PiPWindowController()
             pipController?.onWindowClosed = { [weak self] in
-                self?.pipItem.title = "开启画中画"
+                self?.pipItem.title = "Turn On PiP".localized
                 // 彻底释放 PiP 控制器，确保下次点开能重新初始化录屏会话
                 self?.pipController = nil
             }
@@ -178,15 +239,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         if let pipWindow = pipController?.window, pipWindow.isVisible {
             pipController?.stopPiP()
-            pipItem.title = "开启画中画"
+            pipItem.title = "Turn On PiP".localized
             pipController = nil
         } else {
             if let displayID = AwakeDisplayManager.shared.activeDisplayID {
                 let success = pipController?.startPiP(for: displayID) ?? false
                 if success {
-                    pipItem.title = "关闭画中画"
+                    pipItem.title = "Turn Off PiP".localized
                 } else {
-                    pipItem.title = "开启画中画"
+                    pipItem.title = "Turn On PiP".localized
                     pipController = nil
                 }
             }
@@ -207,7 +268,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 os_log("切换自启动失败: %{public}@", type: .error, error.localizedDescription)
                 
                 let alert = NSAlert()
-                alert.messageText = "切换自启动失败"
+                alert.messageText = "Failed to toggle auto-start".localized
                 alert.informativeText = error.localizedDescription
                 alert.alertStyle = .warning
                 alert.runModal()
@@ -228,7 +289,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateMenuState() {
         let isActive = AwakeDisplayManager.shared.isDisplayActive
         
-        toggleItem.title = isActive ? "关闭虚拟显示器" : "开启虚拟显示器"
+        toggleItem.title = isActive ? "Turn Off Virtual Display".localized : "Turn On Virtual Display".localized
         
         if isActive, let img = fillIcon {
             statusItem.button?.image = img
@@ -250,7 +311,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mirrorModeItem.isHidden = !isActive
         mirrorModeItem.isEnabled = isActive
         if isActive {
-            mirrorModeItem.title = isMirroring ? "切换为扩展显示器" : "切换为镜像显示器"
+            mirrorModeItem.title = isMirroring ? "Switch to Extended Display".localized : "Switch to Mirrored Display".localized
         }
         
         // 如果显示器关闭或处于镜像模式，隐藏画中画选项
@@ -259,12 +320,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         if !pipItem.isHidden {
             let isPiPActive = pipController != nil
-            pipItem.title = isPiPActive ? "关闭画中画" : "开启画中画"
+            pipItem.title = isPiPActive ? "Turn Off PiP".localized : "Turn On PiP".localized
         } else {
             // 如果切换到镜像模式或关闭了显示器，自动关闭画中画
             pipController?.stopPiP()
             pipController = nil
-            pipItem.title = "开启画中画"
+            pipItem.title = "Turn On PiP".localized
         }
     }
     
