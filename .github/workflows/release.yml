@@ -18,13 +18,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up environment and variables
+        id: setup_env
+        run: |
+          set -e
+          VERSION="1.1.0"
+          BUILD_NUMBER=${GITHUB_RUN_NUMBER}
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=${BUILD_NUMBER}" >> $GITHUB_ENV
+
       - name: Build App
         run: |
+          set -e
           chmod +x build.sh
           ./build.sh
 
       - name: Package App
         run: |
+          set -e
           zip -r AwakeDisplay.zip AwakeDisplay.app
 
       - name: Upload Artifact
@@ -34,7 +48,7 @@ jobs:
           path: AwakeDisplay.zip
 
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # 固定使用 v2.2.1 的 commit sha 降低供应链风险
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: AwakeDisplay.zip

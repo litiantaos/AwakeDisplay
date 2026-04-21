@@ -1,17 +1,18 @@
 import Cocoa
 import AVFoundation
+import os.log
 
 class PiPWindowController: NSWindowController, NSWindowDelegate {
     
     private var captureSession: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
-    private var trackingTimer: Timer?
+    private var trackingEventMonitors: [Any] = []
     private var virtualDisplayID: CGDirectDisplayID?
     
     // 用于在标题栏右侧显示小绿点的视图
     private var activeIndicator: NSView?
     
-    // Callback to notify AppDelegate when the window is closed by user
+    // 当用户关闭窗口时通知 AppDelegate 的回调
     var onWindowClosed: (() -> Void)?
     
     init() {
@@ -36,7 +37,7 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
                               backing: .buffered,
                               defer: false)
         window.title = "AwakeDisplay"
-        window.level = .floating // Keeps window always on top
+        window.level = .floating // 保持窗口总在最前
         window.isOpaque = false
         window.backgroundColor = NSColor.black
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -44,7 +45,9 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         
-        let contentView = NSView(frame: contentRect)
+        // 修复 contentView 的 frame 起点问题，不应使用 contentRect (它是屏幕坐标)
+        let boundsRect = NSRect(origin: .zero, size: contentRect.size)
+        let contentView = NSView(frame: boundsRect)
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.black.cgColor
         window.contentView = contentView
@@ -62,28 +65,35 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         indicator.isHidden = true // 默认隐藏
         indicator.translatesAutoresizingMaskIntoConstraints = false
         
-        // 尝试获取原生的标题栏视图并将指示器添加到它的右侧
-        if let titlebarView = window.standardWindowButton(.closeButton)?.superview {
-            titlebarView.addSubview(indicator)
-            
-            NSLayoutConstraint.activate([
-                // 距离右边距 12 点，并垂直居中
-                indicator.trailingAnchor.constraint(equalTo: titlebarView.trailingAnchor, constant: -12),
-                indicator.centerYAnchor.constraint(equalTo: titlebarView.centerYAnchor),
-                indicator.widthAnchor.constraint(equalToConstant: dotSize),
-                indicator.heightAnchor.constraint(equalToConstant: dotSize)
-            ])
-        }
+        // 创建一个容器视图以承载绿点，并提供一些内边距
+        let containerWidth: CGFloat = 24.0
+        let containerHeight: CGFloat = 24.0
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: containerWidth, height: containerHeight))
+        container.addSubview(indicator)
+        
+        NSLayoutConstraint.activate([
+            indicator.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            indicator.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            indicator.widthAnchor.constraint(equalToConstant: dotSize),
+            indicator.heightAnchor.constraint(equalToConstant: dotSize)
+        ])
+        
+        // 使用系统推荐的 NSTitlebarAccessoryViewController 将其添加到标题栏
+        let accessoryVC = NSTitlebarAccessoryViewController()
+        accessoryVC.view = container
+        accessoryVC.layoutAttribute = .right // 靠标题栏右侧显示
+        window.addTitlebarAccessoryViewController(accessoryVC)
         
         self.activeIndicator = indicator
     }
     
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        super.init(coder: coder)
+        return nil
     }
     
-    func startPiP(for displayID: CGDirectDisplayID) {
-        guard let window = self.window, let contentView = window.contentView else { return }
+    func startPiP(for displayID: CGDirectDisplayID) -> Bool {
+        guard let window = self.window, let contentView = window.contentView else { return false }
         
         stopPiP()
         
@@ -93,8 +103,8 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         let isMirroring = (mirroredDisplay != kCGNullDirectDisplay)
         
         if isMirroring {
-            print("Cannot start PiP in mirror mode to prevent system hang.")
-            return
+            os_log("系统当前为镜像模式，拒绝开启画中画以防止系统挂起", type: .info)
+            return false
         }
         
         let session = AVCaptureSession()
@@ -103,8 +113,8 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         session.sessionPreset = .high
         
         guard let input = AVCaptureScreenInput(displayID: displayID) else {
-            showPermissionAlert()
-            return
+            showPermissionAlert(reason: "无法创建屏幕捕获输入。如果这是首次使用，请确保已授予屏幕录制权限。")
+            return false
         }
         
         input.capturesCursor = true
@@ -114,8 +124,8 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         if session.canAddInput(input) {
             session.addInput(input)
         } else {
-            showPermissionAlert()
-            return
+            showPermissionAlert(reason: "无法将屏幕捕获添加到会话中。这可能是由于系统限制或权限不足。")
+            return false
         }
         
         let preview = AVCaptureVideoPreviewLayer(session: session)
@@ -144,21 +154,45 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
         
         self.virtualDisplayID = displayID
         startMouseTracking()
+        return true
     }
     
     private func startMouseTracking() {
-        trackingTimer?.invalidate()
-        // 每隔 0.1 秒检查一次鼠标位置，判断是否进入虚拟显示器
-        trackingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.checkMousePosition()
+        stopMouseTracking()
+        
+        // 确保窗口能接收 local 的 mouseMoved 事件
+        self.window?.acceptsMouseMovedEvents = true
+        
+        let handler: (NSEvent) -> Void = { [weak self] _ in
+            self?.checkMousePosition(mouseLocation: NSEvent.mouseLocation)
         }
+        
+        // 使用全局鼠标事件监听器（当应用不在前台时触发）
+        if let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged], handler: handler) {
+            trackingEventMonitors.append(globalMonitor)
+        }
+        
+        // 使用本地鼠标事件监听器（当应用在前台且如改变窗口大小时触发）
+        if let localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged], handler: { event in
+            handler(event)
+            return event
+        }) {
+            trackingEventMonitors.append(localMonitor)
+        }
+        
+        // 初始检查一次
+        checkMousePosition(mouseLocation: NSEvent.mouseLocation)
     }
     
-    private func checkMousePosition() {
+    private func stopMouseTracking() {
+        for monitor in trackingEventMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        trackingEventMonitors.removeAll()
+    }
+    
+    private func checkMousePosition(mouseLocation: NSPoint) {
         guard let vDisplayID = self.virtualDisplayID else { return }
-        
-        // NSEvent.mouseLocation 返回的是以左下角为原点的坐标系
-        let mouseLocation = NSEvent.mouseLocation
         
         // 获取主屏幕（NSScreen.screens.first 始终是包含原点的屏幕）
         guard let mainScreen = NSScreen.screens.first else { return }
@@ -176,10 +210,8 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
             
             DispatchQueue.main.async {
                 if isMouseInVirtualDisplay {
-                    self.window?.title = "AwakeDisplay"
                     self.activeIndicator?.isHidden = false // 显示右上角小绿点
                 } else {
-                    self.window?.title = "AwakeDisplay"
                     self.activeIndicator?.isHidden = true // 隐藏小绿点
                 }
             }
@@ -187,27 +219,32 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
     }
     
     func stopPiP() {
-        trackingTimer?.invalidate()
-        trackingTimer = nil
+        stopMouseTracking()
         self.virtualDisplayID = nil
         
-        if let session = captureSession {
+        let sessionToStop = captureSession
+        let layerToRemove = previewLayer
+        
+        captureSession = nil
+        previewLayer = nil
+        
+        if let session = sessionToStop {
             DispatchQueue.global(qos: .userInitiated).async {
                 session.stopRunning()
+                DispatchQueue.main.async {
+                    layerToRemove?.removeFromSuperlayer()
+                }
             }
         }
         
-        previewLayer?.removeFromSuperlayer()
-        captureSession = nil
-        previewLayer = nil
         self.window?.orderOut(nil)
     }
     
-    private func showPermissionAlert() {
+    private func showPermissionAlert(reason: String) {
         DispatchQueue.main.async {
             let alert = NSAlert()
-            alert.messageText = "需要屏幕录制权限"
-            alert.informativeText = "画中画功能需要捕获虚拟显示器的画面。请在「系统设置 -> 隐私与安全性 -> 屏幕录制」中为本应用（或 Terminal）授予权限后重试。"
+            alert.messageText = "屏幕录制权限提示"
+            alert.informativeText = reason + "\n请在「系统设置 -> 隐私与安全性 -> 屏幕录制」中为本应用（或 Terminal）授予权限后重试。"
             alert.alertStyle = .warning
             alert.addButton(withTitle: "好的")
             alert.runModal()
@@ -217,7 +254,7 @@ class PiPWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
     
     func windowWillClose(_ notification: Notification) {
-        // Stop the capture session completely when user clicks the red close button
+        // 当用户点击红色关闭按钮时，彻底停止捕获会话
         stopPiP()
         onWindowClosed?()
     }

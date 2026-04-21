@@ -1,8 +1,8 @@
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 
-// Expose internal CGDisplay API for display configuration
-// These are available in CoreGraphics but we need to declare them if not fully exposed in Swift
+// 暴露内部的 CGDisplay API 用于显示器配置
+// 这些 API 存在于 CoreGraphics 中，但如果在 Swift 中未完全暴露，我们需要在此声明
 CGError CGBeginDisplayConfiguration(CGDisplayConfigRef _Nullable * _Nullable config);
 CGError CGConfigureDisplayMirrorOfDisplay(CGDisplayConfigRef _Nullable config, CGDirectDisplayID display, CGDirectDisplayID master);
 CGError CGConfigureDisplayOrigin(CGDisplayConfigRef _Nullable config, CGDirectDisplayID display, int32_t x, int32_t y);
