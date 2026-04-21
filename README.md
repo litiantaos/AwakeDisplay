@@ -44,6 +44,7 @@ open AwakeDisplay.app
 
 #### Important Notes
 
+- **Gatekeeper Warning**: If you see *"Apple cannot check it for malicious software"* when opening the downloaded app, please don't worry. This is because the app is not signed with a paid Apple Developer certificate. Please open Terminal and run `xattr -cr /Applications/AwakeDisplay.app` to remove the quarantine attribute, or **right-click** the app and select "Open".
 - **Permissions**: The Picture-in-Picture (PiP) feature requires Screen Recording permissions. Please grant it in `System Settings -> Privacy & Security -> Screen Recording` upon first use.
 
 ---
@@ -90,6 +91,7 @@ open AwakeDisplay.app
 
 #### 注意事项
 
+- **安全提示 (Gatekeeper)**: 如果打开时提示 *"Apple 无法验证 AwakeDisplay.app"* 或包含恶意软件等，请勿担心，这是因为应用未付费苹果开发者证书。请在终端执行命令 `xattr -cr /Applications/AwakeDisplay.app` 移除隔离属性，或者 **右键** 应用选择“打开”。
 - **权限**: 画中画 (PiP) 功能需要屏幕录制权限，首次使用时请在「系统设置 -> 隐私与安全性 -> 屏幕录制」中授予。
 
 ---
