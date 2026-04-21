@@ -17,6 +17,7 @@ final class AboutWindowController: NSObject {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = true
+            window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             window.center()
             window.isReleasedWhenClosed = false
 
